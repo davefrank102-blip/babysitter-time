@@ -209,19 +209,19 @@ export function rangeToday(nowMs = Date.now(), timeZone = 'America/New_York') {
 }
 
 /**
- * Monday 00:00 → next Monday 00:00 in the given timezone.
- * @param {number} [nowMs]
- * @param {string} [timeZone]
+ * Monday 00:00 (local) for the calendar week containing `ms`, in `timeZone`.
+ * @param {number} ms
+ * @param {string} [timeZone='America/New_York']
+ * @returns {number}
  */
-export function rangeThisWeek(nowMs = Date.now(), timeZone = 'America/New_York') {
+export function weekStartMs(ms, timeZone = 'America/New_York') {
   const weekdayStr = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(
-    new Date(nowMs)
+    new Date(ms)
   );
   const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   const dow = map[weekdayStr] ?? 0;
   const daysSinceMon = (dow + 6) % 7;
-  const p = getZonedParts(nowMs, timeZone);
-  // Walk back daysSinceMon calendar days
+  const p = getZonedParts(ms, timeZone);
   let y = p.year;
   let m = p.month;
   let d = p.day;
@@ -231,11 +231,20 @@ export function rangeThisWeek(nowMs = Date.now(), timeZone = 'America/New_York')
     m = prev.getUTCMonth() + 1;
     d = prev.getUTCDate();
   }
-  const from = zonedDateTimeToUtcMs(y, m, d, 0, 0, 0, timeZone);
-  // +7 days
-  let ey = y;
-  let em = m;
-  let ed = d;
+  return zonedDateTimeToUtcMs(y, m, d, 0, 0, 0, timeZone);
+}
+
+/**
+ * Monday 00:00 → next Monday 00:00 in the given timezone.
+ * @param {number} [nowMs]
+ * @param {string} [timeZone]
+ */
+export function rangeThisWeek(nowMs = Date.now(), timeZone = 'America/New_York') {
+  const from = weekStartMs(nowMs, timeZone);
+  const p = getZonedParts(from, timeZone);
+  let ey = p.year;
+  let em = p.month;
+  let ed = p.day;
   for (let i = 0; i < 7; i++) {
     const n = addOneDay(ey, em, ed);
     ey = n.year;
@@ -244,4 +253,31 @@ export function rangeThisWeek(nowMs = Date.now(), timeZone = 'America/New_York')
   }
   const to = zonedDateTimeToUtcMs(ey, em, ed, 0, 0, 0, timeZone);
   return { from, to };
+}
+
+/**
+ * Label like "Mon 9/8 – Sun 9/14" for the week starting at weekFromMs (Monday 00:00).
+ * @param {number} weekFromMs
+ * @param {string} [timeZone='America/New_York']
+ */
+export function formatWeekRangeLabel(weekFromMs, timeZone = 'America/New_York') {
+  const p = getZonedParts(weekFromMs, timeZone);
+  let y = p.year;
+  let m = p.month;
+  let d = p.day;
+  for (let i = 0; i < 6; i++) {
+    const n = addOneDay(y, m, d);
+    y = n.year;
+    m = n.month;
+    d = n.day;
+  }
+  const endMs = zonedDateTimeToUtcMs(y, m, d, 12, 0, 0, timeZone);
+  const shortDay = (ms) => {
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(new Date(ms));
+    const md = new Intl.DateTimeFormat('en-US', { timeZone, month: 'numeric', day: 'numeric' }).format(
+      new Date(ms)
+    );
+    return `${wd} ${md}`;
+  };
+  return `${shortDay(weekFromMs)} – ${shortDay(endMs)}`;
 }

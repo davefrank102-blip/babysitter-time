@@ -100,6 +100,7 @@
           <div class="seg" id="rangeSeg" role="group" aria-label="Range">
             <button type="button" data-range="today" class="active">Today</button>
             <button type="button" data-range="week">This week</button>
+            <button type="button" data-range="byweek">By week</button>
             <button type="button" data-range="custom">Custom</button>
           </div>
           <div class="range-fields" id="customRange">
@@ -112,7 +113,7 @@
               <input type="date" id="rangeTo" />
             </div>
           </div>
-          <div class="summary-row" style="margin-top:14px">
+          <div class="summary-row" id="parentSummaryRow" style="margin-top:14px">
             <div class="stat">
               <div class="label">Hours</div>
               <div class="value" id="parentHours">0</div>
@@ -130,9 +131,10 @@
               <div class="value" id="parentAfternoon">$0</div>
             </div>
           </div>
+          <ul class="week-totals-list hidden" id="weekTotalsList" aria-label="Totals by week"></ul>
         </div>
 
-        <div class="card">
+        <div class="card" id="parentHistoryCard">
           <div class="card-header-row">
             <h2>Shift history</h2>
             <button type="button" class="btn btn-ghost btn-sm" id="btnExport">Export CSV</button>

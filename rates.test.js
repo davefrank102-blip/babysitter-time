@@ -7,6 +7,8 @@ import {
   getZonedParts,
   rangeToday,
   rangeThisWeek,
+  weekStartMs,
+  formatWeekRangeLabel,
 } from './rates.js';
 
 const TZ = 'America/New_York';
@@ -169,6 +171,11 @@ console.log('\nranges');
   // Mon Jun 8 2026 → Mon Jun 15
   assert(week.from === at(2026, 6, 8, 0, 0), 'week from Monday');
   assert(week.to === at(2026, 6, 15, 0, 0), 'week to next Monday');
+  assert(weekStartMs(noon, TZ) === week.from, 'weekStartMs matches rangeThisWeek.from');
+  assert(weekStartMs(at(2026, 6, 8, 0, 0), TZ) === week.from, 'weekStartMs on Monday');
+  assert(weekStartMs(at(2026, 6, 14, 23, 0), TZ) === week.from, 'weekStartMs on Sunday');
+  const label = formatWeekRangeLabel(week.from, TZ);
+  assert(label.includes('Mon') && label.includes('Sun') && label.includes('–'), 'week label shape: ' + label);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

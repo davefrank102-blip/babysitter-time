@@ -10,6 +10,8 @@ import {
   formatInZone,
   rangeToday,
   rangeThisWeek,
+  weekStartMs,
+  formatWeekRangeLabel,
   getZonedParts,
   zonedDateTimeToUtcMs,
 } from './rates.js';
@@ -208,6 +210,7 @@ function getParentRange() {
   const zone = tz();
   if (rangeMode === 'today') return rangeToday(now, zone);
   if (rangeMode === 'week') return rangeThisWeek(now, zone);
+  if (rangeMode === 'byweek') return { from: null, to: null };
   // custom
   const fromStr = $('rangeFrom').value;
   const toStr = $('rangeTo').value;
@@ -230,18 +233,11 @@ function getParentRange() {
   return { from, to };
 }
 
-function renderParent() {
-  if (!parentUnlocked) return;
-  const h = db.getHousehold();
-  const { from, to } = getParentRange();
-  const shifts = db.listShifts({ from, to });
-
+function accumulateClosed(shifts) {
   let morningPay = 0;
   let afternoonPay = 0;
   let totalHours = 0;
   let totalPay = 0;
-
-  // Totals exclude incomplete shifts (missing departure)
   for (const s of shifts) {
     if (s.clockOut == null) continue;
     morningPay += s.morningPay || 0;
@@ -249,17 +245,81 @@ function renderParent() {
     totalHours += s.totalHours || 0;
     totalPay += s.totalPay || 0;
   }
+  return { morningPay, afternoonPay, totalHours, totalPay };
+}
 
-  $('parentHours').textContent = hoursLabel(totalHours);
-  $('parentPay').textContent = money(totalPay);
-  $('parentMorning').textContent = money(morningPay);
-  $('parentAfternoon').textContent = money(afternoonPay);
+function setParentSummary(totals) {
+  $('parentHours').textContent = hoursLabel(totals.totalHours);
+  $('parentPay').textContent = money(totals.totalPay);
+  $('parentMorning').textContent = money(totals.morningPay);
+  $('parentAfternoon').textContent = money(totals.afternoonPay);
+}
 
-  const list = $('parentShiftList');
-  if (!shifts.length) {
-    list.innerHTML = '<li class="empty">No shifts in this range</li>';
+/** Group closed shifts by Monday-start calendar week; newest first. */
+function groupClosedShiftsByWeek(shifts, timeZone) {
+  /** @type {Map<number, typeof shifts>} */
+  const map = new Map();
+  for (const s of shifts) {
+    if (s.clockOut == null) continue;
+    const start = weekStartMs(s.clockIn, timeZone);
+    if (!map.has(start)) map.set(start, []);
+    map.get(start).push(s);
+  }
+  return [...map.entries()].sort((a, b) => b[0] - a[0]);
+}
+
+function weekItemHtml(weekFromMs, weekShifts, timeZone) {
+  const totals = accumulateClosed(weekShifts);
+  const label = formatWeekRangeLabel(weekFromMs, timeZone);
+  return `<li class="week-item">
+    <div class="week-label">${escapeHtml(label)}</div>
+    <div class="summary-row">
+      <div class="stat"><div class="label">Hours</div><div class="value">${hoursLabel(totals.totalHours)}</div></div>
+      <div class="stat"><div class="label">Pay</div><div class="value">${money(totals.totalPay)}</div></div>
+      <div class="stat"><div class="label">Morning</div><div class="value">${money(totals.morningPay)}</div></div>
+      <div class="stat"><div class="label">Afternoon</div><div class="value">${money(totals.afternoonPay)}</div></div>
+    </div>
+  </li>`;
+}
+
+function renderParent() {
+  if (!parentUnlocked) return;
+  const h = db.getHousehold();
+  const zone = h.timeZone || TZ_DEFAULT;
+  const byWeek = rangeMode === 'byweek';
+  const weekList = $('weekTotalsList');
+  const historyCard = $('parentHistoryCard');
+  const summaryRow = $('parentSummaryRow');
+
+  if (byWeek) {
+    const allShifts = db.listShifts({});
+    const weeks = groupClosedShiftsByWeek(allShifts, zone);
+    const grand = accumulateClosed(allShifts);
+    setParentSummary(grand);
+    summaryRow.classList.remove('hidden');
+    weekList.classList.remove('hidden');
+    historyCard.classList.add('hidden');
+    if (!weeks.length) {
+      weekList.innerHTML = '<li class="empty">No closed shifts yet</li>';
+    } else {
+      weekList.innerHTML = weeks.map(([start, list]) => weekItemHtml(start, list, zone)).join('');
+    }
   } else {
-    list.innerHTML = shifts.map((s) => shiftItemHtml(s, h, true)).join('');
+    weekList.classList.add('hidden');
+    weekList.innerHTML = '';
+    historyCard.classList.remove('hidden');
+    summaryRow.classList.remove('hidden');
+
+    const { from, to } = getParentRange();
+    const shifts = db.listShifts({ from, to });
+    setParentSummary(accumulateClosed(shifts));
+
+    const list = $('parentShiftList');
+    if (!shifts.length) {
+      list.innerHTML = '<li class="empty">No shifts in this range</li>';
+    } else {
+      list.innerHTML = shifts.map((s) => shiftItemHtml(s, h, true)).join('');
+    }
   }
 
   // Settings form

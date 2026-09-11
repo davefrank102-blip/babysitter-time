@@ -566,3 +566,39 @@ a {
     padding-top: 24px;
   }
 }
+
+/* Week totals (parent By week) */
+.week-totals-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.week-totals-list.hidden {
+  display: none;
+}
+
+.week-item {
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.week-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.week-item .summary-row {
+  margin: 0;
+}
+
+.week-item .stat .value {
+  font-size: 1rem;
+}
