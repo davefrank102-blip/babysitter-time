@@ -8,7 +8,6 @@ import { createDb, uuid } from './db.js';
 import {
   splitPay,
   formatInZone,
-  formatDuration,
   rangeToday,
   rangeThisWeek,
   getZonedParts,
@@ -24,7 +23,6 @@ let householdId = null;
 let role = localStorage.getItem('bst:role') || 'sitter';
 let parentUnlocked = sessionStorage.getItem(PARENT_UNLOCK_KEY) === '1';
 let rangeMode = 'today';
-let tickTimer = null;
 let unsub = null;
 
 const $ = (id) => document.getElementById(id);
@@ -93,11 +91,6 @@ function rateOpts(h) {
   };
 }
 
-/** Live pay estimate for an open shift through `now`. */
-function livePay(shift, h, now = Date.now()) {
-  return splitPay(shift.clockIn, Math.max(now, shift.clockIn + 1000), rateOpts(h));
-}
-
 function setRole(next) {
   role = next;
   localStorage.setItem('bst:role', role);
@@ -149,46 +142,15 @@ function updateHeader() {
 
 function renderSitter() {
   const h = db.getHousehold();
-  const open = db.getOpenShift();
   const today = rangeToday(Date.now(), tz());
   const shifts = db.listShifts({ from: today.from, to: today.to });
+  const closed = shifts.filter((s) => s.clockOut != null);
 
-  const btnIn = $('btnClockIn');
-  const btnOut = $('btnClockOut');
-  const status = $('statusLabel');
-  const elapsed = $('elapsedDisplay');
-  const sub = $('elapsedSub');
-
-  if (open) {
-    btnIn.classList.add('hidden');
-    btnOut.classList.remove('hidden');
-    status.textContent = 'Clocked in';
-    status.classList.add('live');
-    const now = Date.now();
-    elapsed.textContent = formatDuration(now - open.clockIn);
-    const pay = livePay(open, h, now);
-    sub.textContent = `Since ${formatInZone(open.clockIn, tz())} · running ${money(pay.totalPay)}`;
-  } else {
-    btnIn.classList.remove('hidden');
-    btnOut.classList.add('hidden');
-    status.textContent = 'Ready';
-    status.classList.remove('live');
-    elapsed.textContent = '0:00:00';
-    sub.textContent = 'Tap Clock In when you arrive';
-  }
-
-  // Today totals including live open shift
   let totalHours = 0;
   let totalPay = 0;
-  for (const s of shifts) {
-    if (s.clockOut == null && open && s.id === open.id) {
-      const p = livePay(s, h);
-      totalHours += p.totalHours;
-      totalPay += p.totalPay;
-    } else {
-      totalHours += s.totalHours || 0;
-      totalPay += s.totalPay || 0;
-    }
+  for (const s of closed) {
+    totalHours += s.totalHours || 0;
+    totalPay += s.totalPay || 0;
   }
   $('sitterHours').textContent = hoursLabel(totalHours);
   $('sitterPay').textContent = money(totalPay);
@@ -199,37 +161,34 @@ function renderSitter() {
   } else {
     list.innerHTML = shifts.map((s) => shiftItemHtml(s, h, false)).join('');
   }
+
+  updateShiftPreview();
 }
 
 function shiftItemHtml(s, h, withActions) {
-  const open = s.clockOut == null;
-  let pay = s.totalPay || 0;
-  let hours = s.totalHours || 0;
-  let morningH = s.morningHours || 0;
-  let afternoonH = s.afternoonHours || 0;
-  if (open) {
-    const p = livePay(s, h);
-    pay = p.totalPay;
-    hours = p.totalHours;
-    morningH = p.morningHours;
-    afternoonH = p.afternoonHours;
-  }
-  const timeRange = open
-    ? `${formatInZone(s.clockIn, tz())} → now`
+  const incomplete = s.clockOut == null;
+  const pay = incomplete ? 0 : s.totalPay || 0;
+  const hours = incomplete ? 0 : s.totalHours || 0;
+  const morningH = incomplete ? 0 : s.morningHours || 0;
+  const afternoonH = incomplete ? 0 : s.afternoonHours || 0;
+  const timeRange = incomplete
+    ? `${formatInZone(s.clockIn, tz())} → —`
     : `${formatInZone(s.clockIn, tz())} → ${formatInZone(s.clockOut, tz())}`;
-  const meta = `${hoursLabel(hours)}h · AM ${hoursLabel(morningH)}h / PM ${hoursLabel(afternoonH)}h${
-    s.note ? ` · ${escapeHtml(s.note)}` : ''
-  }`;
+  const meta = incomplete
+    ? `Incomplete${s.note ? ` · ${escapeHtml(s.note)}` : ''}`
+    : `${hoursLabel(hours)}h · AM ${hoursLabel(morningH)}h / PM ${hoursLabel(afternoonH)}h${
+        s.note ? ` · ${escapeHtml(s.note)}` : ''
+      }`;
   const actions = withActions
     ? `<div class="shift-actions">
         <button type="button" class="btn btn-ghost btn-sm" data-edit="${s.id}">Edit</button>
         <button type="button" class="btn btn-ghost btn-sm" data-delete="${s.id}" style="color:var(--danger)">Delete</button>
       </div>`
     : '';
-  return `<li class="shift-item${open ? ' open' : ''}">
+  return `<li class="shift-item${incomplete ? ' incomplete' : ''}">
     <div class="shift-top">
-      <div class="shift-times">${timeRange}${open ? ' <span class="badge">Live</span>' : ''}</div>
-      <div class="shift-pay">${money(pay)}</div>
+      <div class="shift-times">${timeRange}${incomplete ? ' <span class="badge">Incomplete</span>' : ''}</div>
+      <div class="shift-pay">${incomplete ? '—' : money(pay)}</div>
     </div>
     <div class="shift-meta">${meta}</div>
     ${actions}
@@ -276,26 +235,19 @@ function renderParent() {
   const h = db.getHousehold();
   const { from, to } = getParentRange();
   const shifts = db.listShifts({ from, to });
-  const open = db.getOpenShift();
 
   let morningPay = 0;
   let afternoonPay = 0;
   let totalHours = 0;
   let totalPay = 0;
 
+  // Totals exclude incomplete shifts (missing departure)
   for (const s of shifts) {
-    if (s.clockOut == null) {
-      const p = livePay(s, h);
-      morningPay += p.morningPay;
-      afternoonPay += p.afternoonPay;
-      totalHours += p.totalHours;
-      totalPay += p.totalPay;
-    } else {
-      morningPay += s.morningPay || 0;
-      afternoonPay += s.afternoonPay || 0;
-      totalHours += s.totalHours || 0;
-      totalPay += s.totalPay || 0;
-    }
+    if (s.clockOut == null) continue;
+    morningPay += s.morningPay || 0;
+    afternoonPay += s.afternoonPay || 0;
+    totalHours += s.totalHours || 0;
+    totalPay += s.totalPay || 0;
   }
 
   $('parentHours').textContent = hoursLabel(totalHours);
@@ -326,12 +278,29 @@ function render() {
   else renderParent();
 }
 
-function startTicker() {
-  clearInterval(tickTimer);
-  tickTimer = setInterval(() => {
-    if (role === 'sitter' && db?.getOpenShift()) renderSitter();
-    else if (role === 'parent' && parentUnlocked && db?.getOpenShift()) renderParent();
-  }, 1000);
+function updateShiftPreview() {
+  const preview = $('shiftPreviewText');
+  if (!preview || !db) return;
+  const zone = tz();
+  const inStr = $('shiftArrival')?.value;
+  const outStr = $('shiftDeparture')?.value;
+  if (!inStr || !outStr) {
+    preview.textContent = 'Enter arrival and departure to preview pay';
+    return;
+  }
+  const clockIn = fromDatetimeLocalValue(inStr, zone);
+  const clockOut = fromDatetimeLocalValue(outStr, zone);
+  if (clockIn == null || clockOut == null) {
+    preview.textContent = 'Enter arrival and departure to preview pay';
+    return;
+  }
+  if (clockOut <= clockIn) {
+    preview.textContent = 'Departure must be after arrival';
+    return;
+  }
+  const h = db.getHousehold();
+  const pay = splitPay(clockIn, clockOut, rateOpts(h));
+  preview.textContent = `${hoursLabel(pay.totalHours)}h · ${money(pay.totalPay)} (AM ${money(pay.morningPay)} / PM ${money(pay.afternoonPay)})`;
 }
 
 /** datetime-local value in household TZ */
@@ -410,23 +379,30 @@ function bindEvents() {
   $('roleSitter').addEventListener('click', () => setRole('sitter'));
   $('roleParent').addEventListener('click', () => setRole('parent'));
 
-  $('btnClockIn').addEventListener('click', async () => {
-    try {
-      await db.clockIn();
-      toast('Clocked in');
-      render();
-    } catch (e) {
-      toast(e.message || 'Could not clock in');
-    }
-  });
+  $('shiftArrival').addEventListener('input', updateShiftPreview);
+  $('shiftDeparture').addEventListener('input', updateShiftPreview);
+  $('shiftArrival').addEventListener('change', updateShiftPreview);
+  $('shiftDeparture').addEventListener('change', updateShiftPreview);
 
-  $('btnClockOut').addEventListener('click', async () => {
+  $('shiftForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const zone = tz();
+    const clockIn = fromDatetimeLocalValue($('shiftArrival').value, zone);
+    const clockOut = fromDatetimeLocalValue($('shiftDeparture').value, zone);
+    const note = ($('shiftNote').value || '').trim();
+    if (clockIn == null || clockOut == null) {
+      toast('Arrival and departure are required');
+      return;
+    }
     try {
-      await db.clockOut();
-      toast('Clocked out');
+      await db.addShift({ clockIn, clockOut, note });
+      $('shiftForm').reset();
+      updateShiftPreview();
+      toast('Shift saved');
+      // list/summary refresh via subscribe; render as backup
       render();
-    } catch (e) {
-      toast(e.message || 'Could not clock out');
+    } catch (err) {
+      toast(err.message || 'Could not save shift');
     }
   });
 
@@ -592,7 +568,6 @@ async function main() {
     bindEvents();
     setRole(role === 'parent' ? 'parent' : 'sitter');
     unsub = db.subscribeShifts(() => render());
-    startTicker();
     registerSw();
     render();
   } catch (err) {

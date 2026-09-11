@@ -30,14 +30,26 @@
 
     <!-- Sitter view -->
     <section id="sitterView">
-      <div class="card status-panel">
-        <div class="status-label" id="statusLabel">Ready</div>
-        <div class="elapsed" id="elapsedDisplay">0:00:00</div>
-        <div class="elapsed-sub" id="elapsedSub">Tap Clock In when you arrive</div>
-        <div class="clock-actions">
-          <button type="button" class="btn btn-success" id="btnClockIn">Clock In</button>
-          <button type="button" class="btn btn-danger hidden" id="btnClockOut">Clock Out</button>
-        </div>
+      <div class="card">
+        <h2>Log a shift</h2>
+        <form class="form-grid" id="shiftForm">
+          <div class="field">
+            <label for="shiftArrival">Arrival</label>
+            <input id="shiftArrival" type="datetime-local" required />
+          </div>
+          <div class="field">
+            <label for="shiftDeparture">Departure</label>
+            <input id="shiftDeparture" type="datetime-local" required />
+          </div>
+          <div class="field">
+            <label for="shiftNote">Note <span class="optional">(optional)</span></label>
+            <input id="shiftNote" type="text" maxlength="120" placeholder="Optional note" />
+          </div>
+          <div class="shift-preview" id="shiftPreview" aria-live="polite">
+            <div class="preview-line" id="shiftPreviewText">Enter arrival and departure to preview pay</div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="btnSaveShift" style="width:100%">Save shift</button>
+        </form>
       </div>
 
       <div class="card">
@@ -183,13 +195,13 @@
       <form class="form-grid" id="editForm">
         <input type="hidden" id="editId" />
         <div class="field">
-          <label for="editIn">Clock in</label>
+          <label for="editIn">Arrival</label>
           <input id="editIn" type="datetime-local" required />
         </div>
         <div class="field">
-          <label for="editOut">Clock out</label>
+          <label for="editOut">Departure</label>
           <input id="editOut" type="datetime-local" />
-          <div class="hint">Leave blank to keep open (in progress).</div>
+          <div class="hint">Leave blank only if still incomplete (parent can finish later).</div>
         </div>
         <div class="field">
           <label for="editNote">Note</label>

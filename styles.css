@@ -157,45 +157,26 @@ a {
   margin: 0;
 }
 
-/* Status / clock */
-.status-panel {
-  text-align: center;
-  padding: 20px 16px 16px;
+/* Shift log form */
+.shift-preview {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 4px;
 }
 
-.status-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-muted);
-  margin-bottom: 8px;
-}
-
-.status-label.live {
-  color: var(--success);
-}
-
-.elapsed {
-  font-size: 2.75rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 4px 0 8px;
-}
-
-.elapsed-sub {
+.preview-line {
   font-size: 0.875rem;
-  color: var(--ink-muted);
-  margin-bottom: 20px;
-  min-height: 1.3em;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
-.clock-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.optional {
+  font-weight: 400;
+  color: var(--ink-faint);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .btn {
@@ -320,9 +301,9 @@ a {
   border-radius: var(--radius-sm);
 }
 
-.shift-item.open {
-  background: var(--success-soft);
-  border: 1px solid #b7e0c8;
+.shift-item.incomplete {
+  background: #fff8e8;
+  border: 1px solid #f0d9a8;
 }
 
 .shift-top {

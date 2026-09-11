@@ -178,6 +178,33 @@ function createLocalDb(householdId) {
     return updated;
   }
 
+  function addShift({ clockIn, clockOut, note } = {}) {
+    if (clockIn == null || clockOut == null) {
+      throw new Error('Arrival and departure are required');
+    }
+    if (clockOut <= clockIn) {
+      throw new Error('Departure must be after arrival');
+    }
+    const h = getHousehold();
+    const now = Date.now();
+    const shift = applyPay(
+      {
+        id: uuid(),
+        householdId,
+        clockIn,
+        clockOut,
+        note: note || '',
+        createdAt: now,
+        updatedAt: now,
+      },
+      h
+    );
+    const shifts = allShifts();
+    shifts.push(shift);
+    saveShifts(shifts);
+    return shift;
+  }
+
   function updateShift(id, patch) {
     const h = getHousehold();
     const shifts = allShifts();
@@ -241,6 +268,7 @@ function createLocalDb(householdId) {
     subscribeShifts,
     clockIn,
     clockOut,
+    addShift,
     updateShift,
     deleteShift,
     getOpenShift,
@@ -502,6 +530,36 @@ function createFirebaseDb(config) {
     return updated;
   }
 
+  async function addShift({ clockIn, clockOut, note } = {}) {
+    assertReady();
+    if (clockIn == null || clockOut == null) {
+      throw new Error('Arrival and departure are required');
+    }
+    if (clockOut <= clockIn) {
+      throw new Error('Departure must be after arrival');
+    }
+    const h = getHousehold();
+    const id = uuid();
+    const now = Date.now();
+    const shift = applyPay(
+      {
+        id,
+        householdId,
+        clockIn,
+        clockOut,
+        note: note || '',
+        createdAt: now,
+        updatedAt: now,
+      },
+      h
+    );
+    const { id: _id, householdId: _hid, ...fields } = shift;
+    await fs.setDoc(fs.doc(shiftsCol, id), fields);
+    cacheShifts = [shift, ...cacheShifts.filter((s) => s.id !== id)];
+    notifyListeners();
+    return shift;
+  }
+
   async function updateShift(id, patch) {
     assertReady();
     const h = getHousehold();
@@ -572,6 +630,7 @@ function createFirebaseDb(config) {
     subscribeShifts,
     clockIn,
     clockOut,
+    addShift,
     updateShift,
     deleteShift,
     getOpenShift,
