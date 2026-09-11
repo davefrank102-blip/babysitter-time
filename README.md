@@ -32,6 +32,10 @@ Rates, cutoff hour, household name, and parent PIN are editable in **Parent → 
 
 Sitters enter **Arrival** and **Departure** (`datetime-local`), see a live pay/hours preview from household rates, and tap **Save shift**. Today’s hours/pay summary counts **closed** shifts only. Parent edit modal uses the same Arrival/Departure labels.
 
+## Parent totals
+
+Parent → **Totals** ranges: **Today**, **This week**, **By week**, and **Custom**. **By week** lists each Monday–Sunday week (America/New_York) that has closed shifts, newest first, with hours and morning/afternoon/total pay; an all-time grand total stays above. Shift history is hidden in that mode.
+
 ## Add to Home Screen
 
 ### iPhone (Safari)
