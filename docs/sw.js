@@ -1,5 +1,5 @@
 /* Sitter Time service worker — cache-first for app shell */
-const CACHE = 'sitter-time-v1';
+const CACHE = 'sitter-time-v2';
 const ASSETS = [
   './',
   './index.html',
