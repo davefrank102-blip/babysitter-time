@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2f6fed" />
+  <meta name="description" content="Babysitter time tracking for parents and sitters" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Sitter Time" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Sitter Time</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="header">
+      <div class="brand">
+        <h1>Sitter Time</h1>
+        <div class="meta" id="householdMeta">Loading…</div>
+      </div>
+      <div class="role-toggle" role="group" aria-label="Role">
+        <button type="button" id="roleSitter" class="active" data-role="sitter">Sitter</button>
+        <button type="button" id="roleParent" data-role="parent">Parent</button>
+      </div>
+    </header>
+
+    <!-- Sitter view -->
+    <section id="sitterView">
+      <div class="card status-panel">
+        <div class="status-label" id="statusLabel">Ready</div>
+        <div class="elapsed" id="elapsedDisplay">0:00:00</div>
+        <div class="elapsed-sub" id="elapsedSub">Tap Clock In when you arrive</div>
+        <div class="clock-actions">
+          <button type="button" class="btn btn-success" id="btnClockIn">Clock In</button>
+          <button type="button" class="btn btn-danger hidden" id="btnClockOut">Clock Out</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Today</h2>
+        <div class="summary-row" id="sitterTodaySummary">
+          <div class="stat">
+            <div class="label">Hours</div>
+            <div class="value" id="sitterHours">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Pay</div>
+            <div class="value" id="sitterPay">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Today’s shifts</h2>
+        <ul class="shift-list" id="sitterShiftList"></ul>
+      </div>
+    </section>
+
+    <!-- Parent view -->
+    <section id="parentView" class="hidden">
+      <div class="card pin-gate" id="pinGate">
+        <h2>Parent access</h2>
+        <p>Enter the household PIN to view rates, history, and exports.</p>
+        <input
+          class="pin-input"
+          id="pinInput"
+          type="password"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="8"
+          autocomplete="one-time-code"
+          aria-label="PIN"
+        />
+        <div class="pin-error" id="pinError"></div>
+        <button type="button" class="btn btn-primary" id="btnUnlock" style="width:100%;max-width:220px">Unlock</button>
+      </div>
+
+      <div id="parentContent" class="hidden">
+        <div class="card">
+          <div class="card-header-row">
+            <h2>Totals</h2>
+            <button type="button" class="btn-text" id="btnLock">Lock</button>
+          </div>
+          <div class="seg" id="rangeSeg" role="group" aria-label="Range">
+            <button type="button" data-range="today" class="active">Today</button>
+            <button type="button" data-range="week">This week</button>
+            <button type="button" data-range="custom">Custom</button>
+          </div>
+          <div class="range-fields" id="customRange">
+            <div class="field">
+              <label for="rangeFrom">From</label>
+              <input type="date" id="rangeFrom" />
+            </div>
+            <div class="field">
+              <label for="rangeTo">To</label>
+              <input type="date" id="rangeTo" />
+            </div>
+          </div>
+          <div class="summary-row" style="margin-top:14px">
+            <div class="stat">
+              <div class="label">Hours</div>
+              <div class="value" id="parentHours">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">Pay</div>
+              <div class="value" id="parentPay">$0</div>
+            </div>
+            <div class="stat">
+              <div class="label">Morning</div>
+              <div class="value" id="parentMorning">$0</div>
+            </div>
+            <div class="stat">
+              <div class="label">Afternoon</div>
+              <div class="value" id="parentAfternoon">$0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header-row">
+            <h2>Shift history</h2>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnExport">Export CSV</button>
+          </div>
+          <ul class="shift-list" id="parentShiftList"></ul>
+        </div>
+
+        <div class="card">
+          <h2>Settings</h2>
+          <form class="form-grid" id="settingsForm">
+            <div class="field">
+              <label for="setName">Household name</label>
+              <input id="setName" type="text" maxlength="60" autocomplete="off" />
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="setMorning">Morning $/hr</label>
+                <input id="setMorning" type="number" min="0" step="0.01" inputmode="decimal" />
+              </div>
+              <div class="field">
+                <label for="setAfternoon">Afternoon $/hr</label>
+                <input id="setAfternoon" type="number" min="0" step="0.01" inputmode="decimal" />
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="setCutoff">Cutoff hour</label>
+                <input id="setCutoff" type="number" min="0" max="23" step="1" />
+                <div class="hint">Local hour when afternoon starts (0–23). Default 12.</div>
+              </div>
+              <div class="field">
+                <label for="setPin">PIN</label>
+                <input id="setPin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="setTz">Timezone</label>
+              <input id="setTz" type="text" value="America/New_York" readonly />
+              <div class="hint">Rates and display use America/New_York.</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save settings</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Share link</h2>
+          <p class="hint" style="margin:0 0 10px">Same link for sitter and parent. Role toggles on the home screen.</p>
+          <button type="button" class="btn btn-ghost" id="btnCopyLink" style="width:100%">Copy household link</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note" id="footerNote">Local mode · America/New_York</p>
+  </div>
+
+  <!-- Edit shift modal -->
+  <div class="modal-backdrop hidden" id="editModal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="modal">
+      <h3 id="editTitle">Edit shift</h3>
+      <form class="form-grid" id="editForm">
+        <input type="hidden" id="editId" />
+        <div class="field">
+          <label for="editIn">Clock in</label>
+          <input id="editIn" type="datetime-local" required />
+        </div>
+        <div class="field">
+          <label for="editOut">Clock out</label>
+          <input id="editOut" type="datetime-local" />
+          <div class="hint">Leave blank to keep open (in progress).</div>
+        </div>
+        <div class="field">
+          <label for="editNote">Note</label>
+          <input id="editNote" type="text" maxlength="120" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnEditCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btnEditDelete" style="color:var(--danger);margin-top:8px;width:100%">Delete shift</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

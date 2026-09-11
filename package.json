@@ -1,0 +1,11 @@
+{
+  "name": "babysitter-time",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mobile-first babysitter time-tracking PWA",
+  "scripts": {
+    "test": "node rates.test.js",
+    "start": "python3 -m http.server 8080 --bind 127.0.0.1"
+  }
+}
