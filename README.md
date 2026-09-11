@@ -28,6 +28,10 @@ Rates, cutoff hour, household name, and parent PIN are editable in **Parent → 
 
 **Default parent PIN:** `1234`
 
+## Logging shifts
+
+Sitters enter **Arrival** and **Departure** (`datetime-local`), see a live pay/hours preview from household rates, and tap **Save shift**. Today’s hours/pay summary counts **closed** shifts only. Parent edit modal uses the same Arrival/Departure labels.
+
 ## Add to Home Screen
 
 ### iPhone (Safari)
@@ -74,7 +78,7 @@ Then open `http://127.0.0.1:8080/`. Firebase mode still needs network access to 
 |------|------|
 | `index.html` | App shell, sitter + parent views |
 | `styles.css` | Phone-first UI |
-| `app.js` | Routing, roles, PIN, clock, history, CSV |
+| `app.js` | Routing, roles, PIN, shift form, history, CSV |
 | `rates.js` | Timezone-aware pay split helpers |
 | `rates.test.js` | Node assertions (`npm test` / `node rates.test.js`) |
 | `db.js` | Local adapter + Firebase Firestore live sync |
@@ -89,7 +93,7 @@ node rates.test.js
 
 ## Assumptions
 
-- One open shift at a time per household (enforced before `clockIn`).
+- Sitters log completed shifts with arrival + departure (`addShift`); parent edit can still leave departure blank for incomplete rows.
 - Parent unlock is session-scoped (`sessionStorage`); refresh keeps unlock until the tab closes or Lock is tapped.
 - CSV export includes closed shifts in the selected range only.
 - `datetime-local` edit fields are interpreted in America/New_York, not the device’s OS zone.
