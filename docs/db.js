@@ -8,6 +8,8 @@
 
 import { splitPay } from './rates.js';
 
+const DEFAULT_ROUTES = [{ id: 'bcct-home', label: 'BCCT ↔ Home', miles: 18 }];
+
 const DEFAULTS = {
   name: 'Household',
   pin: '1234',
@@ -15,6 +17,7 @@ const DEFAULTS = {
   afternoonRate: 25,
   cutoffHour: 12,
   timeZone: 'America/New_York',
+  routes: DEFAULT_ROUTES,
 };
 
 function uuid() {
@@ -44,6 +47,33 @@ function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeRoutes(routes, { fallbackIfMissing = false } = {}) {
+  if (!Array.isArray(routes)) {
+    return fallbackIfMissing ? DEFAULT_ROUTES.map((r) => ({ ...r })) : [];
+  }
+  return routes.map((r) => ({
+    id: r.id || uuid(),
+    label: String(r.label || '').trim() || 'Route',
+    miles: Number(r.miles) || 0,
+  }));
+}
+
+function mergeHouseholdFields(data = {}, defaults = {}) {
+  return {
+    name: data.name ?? defaults.name ?? DEFAULTS.name,
+    pin: data.pin ?? defaults.pin ?? DEFAULTS.pin,
+    morningRate: data.morningRate ?? defaults.morningRate ?? DEFAULTS.morningRate,
+    afternoonRate: data.afternoonRate ?? defaults.afternoonRate ?? DEFAULTS.afternoonRate,
+    cutoffHour: data.cutoffHour ?? defaults.cutoffHour ?? DEFAULTS.cutoffHour,
+    timeZone: data.timeZone ?? defaults.timeZone ?? DEFAULTS.timeZone,
+    routes: data.routes != null
+      ? normalizeRoutes(data.routes)
+      : defaults.routes != null
+        ? normalizeRoutes(defaults.routes)
+        : normalizeRoutes(DEFAULTS.routes, { fallbackIfMissing: true }),
+  };
+}
+
 /**
  * @param {{ mode?: 'local'|'firebase', firebaseConfig?: object, householdId: string }} config
  */
@@ -61,6 +91,7 @@ export function createDb(config) {
 function createLocalDb(householdId) {
   const hKey = storageKey(householdId, 'household');
   const sKey = storageKey(householdId, 'shifts');
+  const tKey = storageKey(householdId, 'trips');
   const listeners = new Set();
   let pollTimer = null;
 
@@ -80,14 +111,19 @@ function createLocalDb(householdId) {
     if (!h) {
       h = {
         id: householdId,
-        ...DEFAULTS,
-        ...defaults,
+        ...mergeHouseholdFields({}, defaults),
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       writeJson(hKey, h);
+    } else if (!Array.isArray(h.routes)) {
+      h = { ...h, routes: normalizeRoutes(DEFAULTS.routes, { fallbackIfMissing: true }), updatedAt: Date.now() };
+      writeJson(hKey, h);
+    } else {
+      h = { ...h, routes: normalizeRoutes(h.routes) };
     }
     if (!readJson(sKey, null)) writeJson(sKey, []);
+    if (!readJson(tKey, null)) writeJson(tKey, []);
     return h;
   }
 
@@ -96,7 +132,10 @@ function createLocalDb(householdId) {
   }
 
   function updateHousehold(patch) {
-    const h = { ...getHousehold(), ...patch, updatedAt: Date.now() };
+    const base = getHousehold();
+    const nextPatch = { ...patch };
+    if (patch.routes != null) nextPatch.routes = normalizeRoutes(patch.routes);
+    const h = { ...base, ...nextPatch, updatedAt: Date.now() };
     writeJson(hKey, h);
     notify();
     return h;
@@ -111,6 +150,15 @@ function createLocalDb(householdId) {
     notify();
   }
 
+  function allTrips() {
+    return readJson(tKey, []);
+  }
+
+  function saveTrips(trips) {
+    writeJson(tKey, trips);
+    notify();
+  }
+
   function listShifts({ from, to } = {}) {
     let shifts = allShifts().slice();
     if (from != null || to != null) {
@@ -122,6 +170,19 @@ function createLocalDb(householdId) {
       });
     }
     return shifts.sort((a, b) => b.clockIn - a.clockIn);
+  }
+
+  function listTrips({ from, to } = {}) {
+    let trips = allTrips().slice();
+    if (from != null || to != null) {
+      trips = trips.filter((t) => {
+        const d = t.dayMs;
+        if (from != null && d < from) return false;
+        if (to != null && d >= to) return false;
+        return true;
+      });
+    }
+    return trips.sort((a, b) => b.dayMs - a.dayMs || (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   function getOpenShift() {
@@ -225,6 +286,32 @@ function createLocalDb(householdId) {
     saveShifts(shifts);
   }
 
+  function addTrip(trip) {
+    const now = Date.now();
+    const row = {
+      id: trip.id || uuid(),
+      householdId,
+      dayMs: trip.dayMs,
+      routeId: trip.routeId || null,
+      label: trip.label || '',
+      miles: Number(trip.miles) || 0,
+      ratePerMile: Number(trip.ratePerMile) || 0,
+      amount: Number(trip.amount) || 0,
+      note: trip.note || '',
+      createdAt: trip.createdAt ?? now,
+      updatedAt: trip.updatedAt ?? now,
+    };
+    const trips = allTrips();
+    trips.push(row);
+    saveTrips(trips);
+    return row;
+  }
+
+  function deleteTrip(id) {
+    const trips = allTrips().filter((t) => t.id !== id);
+    saveTrips(trips);
+  }
+
   function subscribeShifts(cb) {
     listeners.add(cb);
     try {
@@ -234,7 +321,7 @@ function createLocalDb(householdId) {
     }
 
     const onStorage = (e) => {
-      if (e.key === sKey || e.key === hKey) notify();
+      if (e.key === sKey || e.key === hKey || e.key === tKey) notify();
     };
     window.addEventListener('storage', onStorage);
 
@@ -265,12 +352,15 @@ function createLocalDb(householdId) {
     getHousehold,
     updateHousehold,
     listShifts,
+    listTrips,
     subscribeShifts,
     clockIn,
     clockOut,
     addShift,
     updateShift,
     deleteShift,
+    addTrip,
+    deleteTrip,
     getOpenShift,
     recalculateAll,
   };
@@ -289,11 +379,14 @@ function createFirebaseDb(config) {
   let db = null;
   let householdRef = null;
   let shiftsCol = null;
+  let tripsCol = null;
   let cacheHousehold = null;
   let cacheShifts = [];
+  let cacheTrips = [];
   let ready = false;
   let unsubHousehold = null;
   let unsubShifts = null;
+  let unsubTrips = null;
   const listeners = new Set();
 
   // Firestore modular helpers (filled after dynamic import)
@@ -343,16 +436,29 @@ function createFirebaseDb(config) {
     };
   }
 
-  function householdFromDoc(docSnap) {
+  function tripFromDoc(docSnap) {
     const data = docSnap.data() || {};
     return {
+      id: docSnap.id,
+      householdId,
+      dayMs: data.dayMs ?? 0,
+      routeId: data.routeId ?? null,
+      label: data.label || '',
+      miles: data.miles || 0,
+      ratePerMile: data.ratePerMile || 0,
+      amount: data.amount || 0,
+      note: data.note || '',
+      createdAt: data.createdAt ?? null,
+      updatedAt: data.updatedAt ?? null,
+    };
+  }
+
+  function householdFromDoc(docSnap) {
+    const data = docSnap.data() || {};
+    const merged = mergeHouseholdFields(data);
+    return {
       id: householdId,
-      name: data.name ?? DEFAULTS.name,
-      pin: data.pin ?? DEFAULTS.pin,
-      morningRate: data.morningRate ?? DEFAULTS.morningRate,
-      afternoonRate: data.afternoonRate ?? DEFAULTS.afternoonRate,
-      cutoffHour: data.cutoffHour ?? DEFAULTS.cutoffHour,
-      timeZone: data.timeZone ?? DEFAULTS.timeZone,
+      ...merged,
       createdAt: data.createdAt ?? null,
       updatedAt: data.updatedAt ?? null,
     };
@@ -388,29 +494,35 @@ function createFirebaseDb(config) {
     db = fs.getFirestore(app);
     householdRef = fs.doc(db, 'households', householdId);
     shiftsCol = fs.collection(db, 'households', householdId, 'shifts');
+    tripsCol = fs.collection(db, 'households', householdId, 'trips');
 
     const snap = await fs.getDoc(householdRef);
     if (!snap.exists()) {
       const now = Date.now();
       const created = {
-        name: defaults.name ?? DEFAULTS.name,
-        pin: defaults.pin ?? DEFAULTS.pin,
-        morningRate: defaults.morningRate ?? DEFAULTS.morningRate,
-        afternoonRate: defaults.afternoonRate ?? DEFAULTS.afternoonRate,
-        cutoffHour: defaults.cutoffHour ?? DEFAULTS.cutoffHour,
-        timeZone: defaults.timeZone ?? DEFAULTS.timeZone,
+        ...mergeHouseholdFields({}, defaults),
         createdAt: now,
         updatedAt: now,
       };
       await fs.setDoc(householdRef, created);
+    } else {
+      const data = snap.data() || {};
+      if (!Array.isArray(data.routes)) {
+        await fs.setDoc(
+          householdRef,
+          { routes: normalizeRoutes(DEFAULTS.routes, { fallbackIfMissing: true }), updatedAt: Date.now() },
+          { merge: true }
+        );
+      }
     }
 
-    // Wait for first household + shifts snapshots before resolving
+    // Wait for first household + shifts + trips snapshots before resolving
     await new Promise((resolve, reject) => {
       let gotH = false;
       let gotS = false;
+      let gotT = false;
       const maybeDone = () => {
-        if (gotH && gotS) {
+        if (gotH && gotS && gotT) {
           ready = true;
           resolve();
         }
@@ -439,6 +551,17 @@ function createFirebaseDb(config) {
         },
         reject
       );
+
+      unsubTrips = fs.onSnapshot(
+        fs.query(tripsCol, fs.orderBy('dayMs', 'desc')),
+        (qs) => {
+          cacheTrips = qs.docs.map(tripFromDoc);
+          gotT = true;
+          maybeDone();
+          if (ready) notifyListeners();
+        },
+        reject
+      );
     });
 
     return cacheHousehold;
@@ -451,15 +574,18 @@ function createFirebaseDb(config) {
 
   async function updateHousehold(patch) {
     assertReady();
+    const nextPatch = { ...patch };
+    if (patch.routes != null) nextPatch.routes = normalizeRoutes(patch.routes);
     const next = {
       ...cacheHousehold,
-      ...patch,
+      ...nextPatch,
       updatedAt: Date.now(),
     };
     // Don't write id into Firestore doc
     const { id, ...fields } = next;
     await fs.setDoc(householdRef, fields, { merge: true });
     cacheHousehold = { ...next, id: householdId };
+    notifyListeners();
     return cacheHousehold;
   }
 
@@ -475,6 +601,20 @@ function createFirebaseDb(config) {
       });
     }
     return shifts.sort((a, b) => b.clockIn - a.clockIn);
+  }
+
+  function listTrips({ from, to } = {}) {
+    assertReady();
+    let trips = cacheTrips.slice();
+    if (from != null || to != null) {
+      trips = trips.filter((t) => {
+        const d = t.dayMs;
+        if (from != null && d < from) return false;
+        if (to != null && d >= to) return false;
+        return true;
+      });
+    }
+    return trips.sort((a, b) => b.dayMs - a.dayMs || (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   function getOpenShift() {
@@ -591,6 +731,37 @@ function createFirebaseDb(config) {
     notifyListeners();
   }
 
+  async function addTrip(trip) {
+    assertReady();
+    const id = trip.id || uuid();
+    const now = Date.now();
+    const row = {
+      id,
+      householdId,
+      dayMs: trip.dayMs,
+      routeId: trip.routeId || null,
+      label: trip.label || '',
+      miles: Number(trip.miles) || 0,
+      ratePerMile: Number(trip.ratePerMile) || 0,
+      amount: Number(trip.amount) || 0,
+      note: trip.note || '',
+      createdAt: trip.createdAt ?? now,
+      updatedAt: trip.updatedAt ?? now,
+    };
+    const { id: _id, householdId: _hid, ...fields } = row;
+    await fs.setDoc(fs.doc(tripsCol, id), fields);
+    cacheTrips = [row, ...cacheTrips.filter((t) => t.id !== id)];
+    notifyListeners();
+    return row;
+  }
+
+  async function deleteTrip(id) {
+    assertReady();
+    await fs.deleteDoc(fs.doc(tripsCol, id));
+    cacheTrips = cacheTrips.filter((t) => t.id !== id);
+    notifyListeners();
+  }
+
   function subscribeShifts(cb) {
     listeners.add(cb);
     if (ready) {
@@ -627,15 +798,18 @@ function createFirebaseDb(config) {
     getHousehold,
     updateHousehold,
     listShifts,
+    listTrips,
     subscribeShifts,
     clockIn,
     clockOut,
     addShift,
     updateShift,
     deleteShift,
+    addTrip,
+    deleteTrip,
     getOpenShift,
     recalculateAll,
   };
 }
 
-export { DEFAULTS, uuid };
+export { DEFAULTS, DEFAULT_ROUTES, uuid };

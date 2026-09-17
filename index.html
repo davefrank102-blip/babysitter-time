@@ -123,12 +123,12 @@
               <div class="value" id="parentPay">$0</div>
             </div>
             <div class="stat">
-              <div class="label">Morning</div>
-              <div class="value" id="parentMorning">$0</div>
+              <div class="label">Mileage</div>
+              <div class="value" id="parentMileage">$0</div>
             </div>
             <div class="stat">
-              <div class="label">Afternoon</div>
-              <div class="value" id="parentAfternoon">$0</div>
+              <div class="label">Combined</div>
+              <div class="value" id="parentCombined">$0</div>
             </div>
           </div>
           <ul class="week-totals-list hidden" id="weekTotalsList" aria-label="Totals by week"></ul>
@@ -140,6 +140,48 @@
             <button type="button" class="btn btn-ghost btn-sm" id="btnExport">Export CSV</button>
           </div>
           <ul class="shift-list" id="parentShiftList"></ul>
+        </div>
+
+        <div class="card" id="parentMileageCard">
+          <div class="card-header-row">
+            <h2>Mileage</h2>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnExportMileage">Export mileage CSV</button>
+          </div>
+          <form class="form-grid" id="tripForm">
+            <div class="field">
+              <label for="tripDate">Date</label>
+              <input id="tripDate" type="date" required />
+            </div>
+            <div class="field">
+              <label for="tripRoute">Route</label>
+              <select id="tripRoute" required></select>
+            </div>
+            <div id="tripCustomFields" class="hidden">
+              <div class="field-row">
+                <div class="field">
+                  <label for="tripCustomLabel">Destination</label>
+                  <input id="tripCustomLabel" type="text" maxlength="80" placeholder="e.g. Grocery store" />
+                </div>
+                <div class="field">
+                  <label for="tripCustomMiles">Miles</label>
+                  <input id="tripCustomMiles" type="number" min="0" step="0.1" inputmode="decimal" />
+                </div>
+              </div>
+              <label class="check-row">
+                <input type="checkbox" id="tripSaveToList" />
+                <span>Save to route list</span>
+              </label>
+            </div>
+            <div class="field">
+              <label for="tripNote">Note <span class="optional">(optional)</span></label>
+              <input id="tripNote" type="text" maxlength="120" placeholder="Optional note" />
+            </div>
+            <div class="shift-preview" aria-live="polite">
+              <div class="preview-line" id="tripPreviewText">Pick a date and route to preview</div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="btnSaveTrip" style="width:100%">Save trip</button>
+          </form>
+          <ul class="shift-list" id="tripList" style="margin-top:14px"></ul>
         </div>
 
         <div class="card">
@@ -177,6 +219,25 @@
             </div>
             <button type="submit" class="btn btn-primary">Save settings</button>
           </form>
+
+          <div class="routes-section">
+            <h3 class="section-subhead">Destinations</h3>
+            <p class="hint" style="margin:0 0 10px">Preset and custom routes for mileage logging. Mileage uses the IRS business rate for the trip date.</p>
+            <ul class="shift-list" id="routeList"></ul>
+            <form class="form-grid" id="routeAddForm" style="margin-top:12px">
+              <div class="field-row">
+                <div class="field">
+                  <label for="routeNewLabel">Label</label>
+                  <input id="routeNewLabel" type="text" maxlength="80" placeholder="Route name" required />
+                </div>
+                <div class="field">
+                  <label for="routeNewMiles">Miles</label>
+                  <input id="routeNewMiles" type="number" min="0" step="0.1" inputmode="decimal" required />
+                </div>
+              </div>
+              <button type="submit" class="btn btn-ghost" style="width:100%">Add route</button>
+            </form>
+          </div>
         </div>
 
         <div class="card">

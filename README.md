@@ -29,6 +29,28 @@ Rates, cutoff hour, household name, and parent PIN are editable in **Parent → 
 
 **Default parent PIN:** `1234`
 
+
+## Mileage (Parent only)
+
+Parents can log driving reimbursement after PIN unlock. A **Mileage** card sits between Shift history and Settings.
+
+- **Preset route:** BCCT ↔ Home · **18 mi**
+- Pick a date + route (or **Other…** for a custom destination/miles). Optional **Save to route list** adds a custom destination for later.
+- Amount = miles × **IRS business standard rate** for that date (America/New_York), then **ceil to whole dollars** (same as shift pay).
+- Destinations are managed under **Settings → Destinations** (add/delete; stored on the household doc).
+- Totals show **Hours**, **Pay** (shifts), **Mileage**, and **Combined**. By-week mode includes mileage per week.
+- **Export mileage CSV** downloads trips in the selected totals range.
+
+### IRS business mileage rates
+
+| Period (America/New_York) | Rate |
+|---------------------------|------|
+| Before 2026 | **$0.70**/mi |
+| 2026 Jan 1 – Jun 30 | **$0.725**/mi |
+| 2026 Jul 1 onward | **$0.76**/mi |
+
+Trips live in `households/{id}/trips` (and localStorage `bst:{id}:trips`). Routes are on the household document as `routes: [{ id, label, miles }]`.
+
 ## Logging shifts
 
 Sitters enter **Arrival** and **Departure** (`datetime-local`), see a live pay/hours preview from household rates, and tap **Save shift**. Today’s hours/pay summary counts **closed** shifts only. Parent edit modal uses the same Arrival/Departure labels.
@@ -60,7 +82,7 @@ UI talks only to `db.js`:
 createDb({ mode: 'local' | 'firebase', firebaseConfig?, householdId })
 ```
 
-**Firebase mode (live site):** Firestore collections `households/{id}` and `households/{id}/shifts`. `onSnapshot` keeps an in-memory cache so both phones update in near real time. Header shows **Live sync on**.
+**Firebase mode (live site):** Firestore collections `households/{id}`, `households/{id}/shifts`, and `households/{id}/trips`. `onSnapshot` keeps an in-memory cache so both phones update in near real time. Header shows **Live sync on**.
 
 **Local mode:** `localStorage` keyed by `bst:<householdId>:…` for offline / local development (`mode: 'local'` in `app.js`).
 
@@ -83,8 +105,8 @@ Then open `http://127.0.0.1:8080/`. Firebase mode still needs network access to 
 |------|------|
 | `index.html` | App shell, sitter + parent views |
 | `styles.css` | Phone-first UI |
-| `app.js` | Routing, roles, PIN, shift form, history, CSV |
-| `rates.js` | Timezone-aware pay split helpers |
+| `app.js` | Routing, roles, PIN, shift form, mileage, history, CSV |
+| `rates.js` | Timezone-aware pay split + IRS mileage helpers |
 | `rates.test.js` | Node assertions (`npm test` / `node rates.test.js`) |
 | `db.js` | Local adapter + Firebase Firestore live sync |
 | `manifest.json` / `sw.js` / `icons/` | PWA |
@@ -101,4 +123,5 @@ node rates.test.js
 - Sitters log completed shifts with arrival + departure (`addShift`); parent edit can still leave departure blank for incomplete rows.
 - Parent unlock is session-scoped (`sessionStorage`); refresh keeps unlock until the tab closes or Lock is tapped.
 - CSV export includes closed shifts in the selected range only.
+- Mileage CSV export includes trips in the selected range only.
 - `datetime-local` edit fields are interpreted in America/New_York, not the device’s OS zone.

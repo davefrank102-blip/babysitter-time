@@ -602,3 +602,42 @@ a {
 .week-item .stat .value {
   font-size: 1rem;
 }
+
+/* Mileage / destinations */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: var(--ink);
+  padding: 4px 0;
+}
+
+.check-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+#tripCustomFields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#tripCustomFields.hidden {
+  display: none !important;
+}
+
+.routes-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.section-subhead {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+  font-weight: 650;
+}

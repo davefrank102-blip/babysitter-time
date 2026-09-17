@@ -14,10 +14,13 @@ import {
   formatWeekRangeLabel,
   getZonedParts,
   zonedDateTimeToUtcMs,
+  irsBusinessMileageRate,
+  mileageAmount,
 } from './rates.js';
 
 const TZ_DEFAULT = 'America/New_York';
 const PARENT_UNLOCK_KEY = 'bst:parentUnlocked';
+const OTHER_ROUTE_VALUE = '__other__';
 
 /** @type {ReturnType<typeof createDb> | null} */
 let db = null;
@@ -223,7 +226,6 @@ function getParentRange() {
   const [ty, tm, td] = toStr.split('-').map(Number);
   const from = zonedDateTimeToUtcMs(fy, fm, fd, 0, 0, 0, zone);
   // inclusive end day → next midnight
-  const endParts = { year: ty, month: tm, day: td };
   const next = new Date(Date.UTC(ty, tm - 1, td + 1));
   const to = zonedDateTimeToUtcMs(
     next.getUTCFullYear(),
@@ -252,11 +254,21 @@ function accumulateClosed(shifts) {
   return { morningPay, afternoonPay, totalHours, totalPay };
 }
 
-function setParentSummary(totals) {
+function accumulateMileage(trips) {
+  let totalMiles = 0;
+  let totalMileage = 0;
+  for (const t of trips) {
+    totalMiles += Number(t.miles) || 0;
+    totalMileage += Number(t.amount) || 0;
+  }
+  return { totalMiles, totalMileage };
+}
+
+function setParentSummary(totals, mileagePay = 0) {
   $('parentHours').textContent = hoursLabel(totals.totalHours);
   $('parentPay').textContent = money(totals.totalPay);
-  $('parentMorning').textContent = money(totals.morningPay);
-  $('parentAfternoon').textContent = money(totals.afternoonPay);
+  $('parentMileage').textContent = money(mileagePay);
+  $('parentCombined').textContent = money((totals.totalPay || 0) + (mileagePay || 0));
 }
 
 /** Group closed shifts by Monday-start calendar week; newest first. */
@@ -272,18 +284,163 @@ function groupClosedShiftsByWeek(shifts, timeZone) {
   return [...map.entries()].sort((a, b) => b[0] - a[0]);
 }
 
-function weekItemHtml(weekFromMs, weekShifts, timeZone) {
+function groupTripsByWeek(trips, timeZone) {
+  /** @type {Map<number, typeof trips>} */
+  const map = new Map();
+  for (const t of trips) {
+    const start = weekStartMs(t.dayMs, timeZone);
+    if (!map.has(start)) map.set(start, []);
+    map.get(start).push(t);
+  }
+  return map;
+}
+
+function weekItemHtml(weekFromMs, weekShifts, weekTrips, timeZone) {
   const totals = accumulateClosed(weekShifts);
+  const mileage = accumulateMileage(weekTrips || []);
   const label = formatWeekRangeLabel(weekFromMs, timeZone);
+  const combined = (totals.totalPay || 0) + (mileage.totalMileage || 0);
   return `<li class="week-item">
     <div class="week-label">${escapeHtml(label)}</div>
     <div class="summary-row">
       <div class="stat"><div class="label">Hours</div><div class="value">${hoursLabel(totals.totalHours)}</div></div>
       <div class="stat"><div class="label">Pay</div><div class="value">${money(totals.totalPay)}</div></div>
-      <div class="stat"><div class="label">Morning</div><div class="value">${money(totals.morningPay)}</div></div>
-      <div class="stat"><div class="label">Afternoon</div><div class="value">${money(totals.afternoonPay)}</div></div>
+      <div class="stat"><div class="label">Mileage</div><div class="value">${money(mileage.totalMileage)}</div></div>
+      <div class="stat"><div class="label">Combined</div><div class="value">${money(combined)}</div></div>
     </div>
   </li>`;
+}
+
+function formatDayLabel(dayMs, timeZone) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(dayMs));
+}
+
+function tripItemHtml(t, timeZone) {
+  const dayLabel = formatDayLabel(t.dayMs, timeZone);
+  const milesLabel = `${hoursLabel(t.miles)} mi · $${Number(t.ratePerMile).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}/mi`;
+  const meta = `${milesLabel}${t.note ? ` · ${escapeHtml(t.note)}` : ''}`;
+  return `<li class="shift-item">
+    <div class="shift-top">
+      <div class="shift-times">${escapeHtml(dayLabel)} · ${escapeHtml(t.label || 'Trip')}</div>
+      <div class="shift-pay">${money(t.amount)}</div>
+    </div>
+    <div class="shift-meta">${meta}</div>
+    <div class="shift-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-delete-trip="${t.id}" style="color:var(--danger)">Delete</button>
+    </div>
+  </li>`;
+}
+
+function routeItemHtml(r) {
+  return `<li class="shift-item">
+    <div class="shift-top">
+      <div class="shift-times">${escapeHtml(r.label)}</div>
+      <div class="shift-pay">${hoursLabel(r.miles)} mi</div>
+    </div>
+    <div class="shift-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-delete-route="${escapeHtml(r.id)}" style="color:var(--danger)">Delete</button>
+    </div>
+  </li>`;
+}
+
+function populateRouteSelect(routes, preferValue) {
+  const sel = $('tripRoute');
+  if (!sel) return;
+  const prev = preferValue != null ? preferValue : sel.value;
+  const opts = (routes || []).map(
+    (r) =>
+      `<option value="${escapeHtml(r.id)}">${escapeHtml(r.label)} · ${hoursLabel(r.miles)} mi</option>`
+  );
+  opts.push(`<option value="${OTHER_ROUTE_VALUE}">Other…</option>`);
+  sel.innerHTML = opts.join('');
+  if (prev && [...sel.options].some((o) => o.value === prev)) {
+    sel.value = prev;
+  } else if (routes && routes.length) {
+    sel.value = routes[0].id;
+  } else {
+    sel.value = OTHER_ROUTE_VALUE;
+  }
+  toggleTripCustomFields();
+}
+
+function toggleTripCustomFields() {
+  const isOther = $('tripRoute')?.value === OTHER_ROUTE_VALUE;
+  $('tripCustomFields')?.classList.toggle('hidden', !isOther);
+}
+
+function dateInputValueFromMs(ms, timeZone) {
+  const p = getZonedParts(ms, timeZone);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+}
+
+function dayMsFromDateInput(str, timeZone) {
+  if (!str) return null;
+  const [y, m, d] = str.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return zonedDateTimeToUtcMs(y, m, d, 0, 0, 0, timeZone);
+}
+
+function ensureTripDateDefault() {
+  const input = $('tripDate');
+  if (!input || input.value) return;
+  input.value = dateInputValueFromMs(Date.now(), tz());
+}
+
+function resolveTripDraft() {
+  const zone = tz();
+  const h = db.getHousehold();
+  const dayMs = dayMsFromDateInput($('tripDate')?.value, zone);
+  const routeVal = $('tripRoute')?.value;
+  const isOther = routeVal === OTHER_ROUTE_VALUE;
+  let label = '';
+  let miles = 0;
+  let routeId = null;
+
+  if (isOther) {
+    label = ($('tripCustomLabel')?.value || '').trim();
+    miles = Number($('tripCustomMiles')?.value);
+  } else {
+    const route = (h.routes || []).find((r) => r.id === routeVal);
+    if (route) {
+      label = route.label;
+      miles = Number(route.miles) || 0;
+      routeId = route.id;
+    }
+  }
+
+  const ratePerMile = dayMs != null ? irsBusinessMileageRate(dayMs, zone) : 0;
+  const amount = dayMs != null && miles > 0 ? mileageAmount(miles, ratePerMile) : 0;
+  const note = ($('tripNote')?.value || '').trim();
+  const saveToList = isOther && $('tripSaveToList')?.checked;
+
+  return { dayMs, routeId, label, miles, ratePerMile, amount, note, isOther, saveToList };
+}
+
+function updateTripPreview() {
+  const preview = $('tripPreviewText');
+  if (!preview || !db) return;
+  const draft = resolveTripDraft();
+  if (draft.dayMs == null) {
+    preview.textContent = 'Pick a date and route to preview';
+    return;
+  }
+  if (draft.isOther && (!draft.label || !(draft.miles > 0))) {
+    preview.textContent = 'Enter destination name and miles';
+    return;
+  }
+  if (!(draft.miles > 0)) {
+    preview.textContent = 'Pick a date and route to preview';
+    return;
+  }
+  const rateLabel = `$${draft.ratePerMile.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}/mi`;
+  preview.textContent = `${hoursLabel(draft.miles)} mi × ${rateLabel} → ${money(draft.amount)}`;
 }
 
 function renderParent() {
@@ -293,36 +450,67 @@ function renderParent() {
   const byWeek = rangeMode === 'byweek';
   const weekList = $('weekTotalsList');
   const historyCard = $('parentHistoryCard');
+  const mileageCard = $('parentMileageCard');
   const summaryRow = $('parentSummaryRow');
+
+  populateRouteSelect(h.routes || []);
+  ensureTripDateDefault();
 
   if (byWeek) {
     const allShifts = db.listShifts({});
+    const allTrips = db.listTrips({});
     const weeks = groupClosedShiftsByWeek(allShifts, zone);
+    const tripsByWeek = groupTripsByWeek(allTrips, zone);
+    // Include weeks that only have mileage
+    const weekStarts = new Set(weeks.map(([start]) => start));
+    for (const start of tripsByWeek.keys()) {
+      if (!weekStarts.has(start)) {
+        weeks.push([start, []]);
+        weekStarts.add(start);
+      }
+    }
+    weeks.sort((a, b) => b[0] - a[0]);
+
     const grand = accumulateClosed(allShifts);
-    setParentSummary(grand);
+    const mileageGrand = accumulateMileage(allTrips);
+    setParentSummary(grand, mileageGrand.totalMileage);
     summaryRow.classList.remove('hidden');
     weekList.classList.remove('hidden');
     historyCard.classList.add('hidden');
+    mileageCard.classList.add('hidden');
     if (!weeks.length) {
-      weekList.innerHTML = '<li class="empty">No closed shifts yet</li>';
+      weekList.innerHTML = '<li class="empty">No closed shifts or trips yet</li>';
     } else {
-      weekList.innerHTML = weeks.map(([start, list]) => weekItemHtml(start, list, zone)).join('');
+      weekList.innerHTML = weeks
+        .map(([start, list]) => weekItemHtml(start, list, tripsByWeek.get(start) || [], zone))
+        .join('');
     }
   } else {
     weekList.classList.add('hidden');
     weekList.innerHTML = '';
     historyCard.classList.remove('hidden');
+    mileageCard.classList.remove('hidden');
     summaryRow.classList.remove('hidden');
 
     const { from, to } = getParentRange();
     const shifts = db.listShifts({ from, to });
-    setParentSummary(accumulateClosed(shifts));
+    const trips = db.listTrips({ from, to });
+    const totals = accumulateClosed(shifts);
+    const mileage = accumulateMileage(trips);
+    setParentSummary(totals, mileage.totalMileage);
 
     const list = $('parentShiftList');
     if (!shifts.length) {
       list.innerHTML = '<li class="empty">No shifts in this range</li>';
     } else {
       list.innerHTML = shifts.map((s) => shiftItemHtml(s, h, true)).join('');
+    }
+
+    const tripList = $('tripList');
+    if (!trips.length) {
+      tripList.innerHTML = '<li class="empty">No trips in this range</li>';
+    } else {
+      tripList.innerHTML = trips.map((t) => tripItemHtml(t, zone)).join('');
     }
   }
 
@@ -333,6 +521,16 @@ function renderParent() {
   $('setCutoff').value = h.cutoffHour;
   $('setPin').value = h.pin;
   $('setTz').value = h.timeZone || TZ_DEFAULT;
+
+  const routeList = $('routeList');
+  const routes = h.routes || [];
+  if (!routes.length) {
+    routeList.innerHTML = '<li class="empty">No destinations yet</li>';
+  } else {
+    routeList.innerHTML = routes.map(routeItemHtml).join('');
+  }
+
+  updateTripPreview();
 }
 
 function render() {
@@ -439,6 +637,36 @@ function exportCsv() {
   toast('CSV downloaded');
 }
 
+function exportMileageCsv() {
+  const { from, to } = getParentRange();
+  const trips = db.listTrips({ from, to });
+  const zone = tz();
+  const header = ['id', 'date', 'label', 'miles', 'rate_per_mile', 'amount', 'note'];
+  const rows = trips.map((t) => {
+    const p = getZonedParts(t.dayMs, zone);
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+    return [
+      t.id,
+      dateStr,
+      JSON.stringify(t.label || ''),
+      t.miles,
+      t.ratePerMile,
+      t.amount,
+      JSON.stringify(t.note || ''),
+    ].join(',');
+  });
+  const csv = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sitter-mileage-${householdId.slice(0, 8)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Mileage CSV downloaded');
+}
+
 function bindEvents() {
   $('roleSitter').addEventListener('click', () => setRole('sitter'));
   $('roleParent').addEventListener('click', () => setRole('parent'));
@@ -526,6 +754,132 @@ function bindEvents() {
   });
 
   $('btnExport').addEventListener('click', exportCsv);
+  $('btnExportMileage').addEventListener('click', exportMileageCsv);
+
+  $('tripRoute').addEventListener('change', () => {
+    toggleTripCustomFields();
+    updateTripPreview();
+  });
+  $('tripDate').addEventListener('change', updateTripPreview);
+  $('tripDate').addEventListener('input', updateTripPreview);
+  $('tripCustomLabel').addEventListener('input', updateTripPreview);
+  $('tripCustomMiles').addEventListener('input', updateTripPreview);
+  $('tripNote').addEventListener('input', updateTripPreview);
+
+  $('tripForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const draft = resolveTripDraft();
+    if (draft.dayMs == null) {
+      toast('Date is required');
+      return;
+    }
+    if (draft.isOther) {
+      if (!draft.label) {
+        toast('Destination name is required');
+        return;
+      }
+      if (!(draft.miles > 0)) {
+        toast('Miles must be greater than 0');
+        return;
+      }
+    } else if (!(draft.miles > 0) || !draft.routeId) {
+      toast('Pick a route');
+      return;
+    }
+
+    try {
+      let routeId = draft.routeId;
+      let label = draft.label;
+      let miles = draft.miles;
+
+      if (draft.isOther && draft.saveToList) {
+        const h = db.getHousehold();
+        const newRoute = { id: uuid(), label, miles };
+        const routes = [...(h.routes || []), newRoute];
+        await db.updateHousehold({ routes });
+        routeId = newRoute.id;
+      }
+
+      await db.addTrip({
+        dayMs: draft.dayMs,
+        routeId,
+        label,
+        miles,
+        ratePerMile: draft.ratePerMile,
+        amount: draft.amount,
+        note: draft.note,
+      });
+
+      $('tripNote').value = '';
+      $('tripCustomLabel').value = '';
+      $('tripCustomMiles').value = '';
+      $('tripSaveToList').checked = false;
+      if (draft.isOther && !draft.saveToList) {
+        // stay on Other
+      } else {
+        populateRouteSelect(db.getHousehold().routes || [], routeId || undefined);
+      }
+      updateTripPreview();
+      toast('Trip saved');
+      render();
+    } catch (err) {
+      toast(err.message || 'Could not save trip');
+    }
+  });
+
+  $('tripList').addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-delete-trip]');
+    if (!del) return;
+    if (confirm('Delete this trip?')) {
+      try {
+        await db.deleteTrip(del.dataset.deleteTrip);
+        toast('Trip deleted');
+        render();
+      } catch (err) {
+        toast(err.message || 'Delete failed');
+      }
+    }
+  });
+
+  $('routeAddForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const label = ($('routeNewLabel').value || '').trim();
+    const miles = Number($('routeNewMiles').value);
+    if (!label) {
+      toast('Label is required');
+      return;
+    }
+    if (!(miles > 0)) {
+      toast('Miles must be greater than 0');
+      return;
+    }
+    try {
+      const h = db.getHousehold();
+      const routes = [...(h.routes || []), { id: uuid(), label, miles }];
+      await db.updateHousehold({ routes });
+      $('routeAddForm').reset();
+      toast('Route added');
+      render();
+    } catch (err) {
+      toast(err.message || 'Could not add route');
+    }
+  });
+
+  $('routeList').addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-delete-route]');
+    if (!del) return;
+    if (confirm('Delete this destination?')) {
+      try {
+        const h = db.getHousehold();
+        const routes = (h.routes || []).filter((r) => r.id !== del.dataset.deleteRoute);
+        await db.updateHousehold({ routes });
+        toast('Route deleted');
+        render();
+      } catch (err) {
+        toast(err.message || 'Delete failed');
+      }
+    }
+  });
 
   $('btnCopyLink').addEventListener('click', async () => {
     const url = `${location.origin}${location.pathname}${location.search}#/h/${householdId}`;

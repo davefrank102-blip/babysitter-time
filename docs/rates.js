@@ -87,6 +87,39 @@ function addOneDay(year, month, day) {
   };
 }
 
+/** Round cents up to the next whole dollar (0 stays 0). */
+export function ceilDollar(n) {
+  if (!(n > 0)) return 0;
+  return Math.ceil(n - 1e-9);
+}
+
+/**
+ * IRS business standard mileage rate ($/mi) for the calendar day of `ms` in `timeZone`.
+ * - before 2026: $0.70
+ * - 2026 Jan 1–Jun 30: $0.725
+ * - 2026 Jul 1 onward (until updated): $0.76
+ *
+ * @param {number} ms
+ * @param {string} [timeZone='America/New_York']
+ * @returns {number}
+ */
+export function irsBusinessMileageRate(ms, timeZone = 'America/New_York') {
+  const p = getZonedParts(ms, timeZone);
+  if (p.year < 2026) return 0.7;
+  if (p.year === 2026 && p.month <= 6) return 0.725;
+  return 0.76;
+}
+
+/**
+ * Mileage reimbursement: miles × rate, ceiled to whole dollars.
+ * @param {number} miles
+ * @param {number} ratePerMile
+ * @returns {number}
+ */
+export function mileageAmount(miles, ratePerMile) {
+  return ceilDollar((Number(miles) || 0) * (Number(ratePerMile) || 0));
+}
+
 /**
  * Split a shift across morning/afternoon rates using local wall time in `timeZone`.
  * Overnight shifts: each calendar day's portion is split at that day's cutoff.
@@ -151,11 +184,6 @@ export function splitPay(clockInMs, clockOutMs, opts = {}) {
   const afternoonPayExact = afternoonHours * afternoonRate;
 
   const round4 = (n) => Math.round(n * 10000) / 10000;
-  /** Round cents up to the next whole dollar (0 stays 0). */
-  const ceilDollar = (n) => {
-    if (!(n > 0)) return 0;
-    return Math.ceil(n - 1e-9);
-  };
   const morningPay = ceilDollar(morningPayExact);
   const afternoonPay = ceilDollar(afternoonPayExact);
 
