@@ -147,19 +147,25 @@ export function splitPay(clockInMs, clockOutMs, opts = {}) {
 
   const morningHours = morningMs / 3600000;
   const afternoonHours = afternoonMs / 3600000;
-  const morningPay = morningHours * morningRate;
-  const afternoonPay = afternoonHours * afternoonRate;
+  const morningPayExact = morningHours * morningRate;
+  const afternoonPayExact = afternoonHours * afternoonRate;
 
   const round4 = (n) => Math.round(n * 10000) / 10000;
-  const round2 = (n) => Math.round(n * 100) / 100;
+  /** Round cents up to the next whole dollar (0 stays 0). */
+  const ceilDollar = (n) => {
+    if (!(n > 0)) return 0;
+    return Math.ceil(n - 1e-9);
+  };
+  const morningPay = ceilDollar(morningPayExact);
+  const afternoonPay = ceilDollar(afternoonPayExact);
 
   return {
     morningHours: round4(morningHours),
     afternoonHours: round4(afternoonHours),
-    morningPay: round2(morningPay),
-    afternoonPay: round2(afternoonPay),
+    morningPay,
+    afternoonPay,
     totalHours: round4(morningHours + afternoonHours),
-    totalPay: round2(morningPay + afternoonPay),
+    totalPay: morningPay + afternoonPay,
   };
 }
 

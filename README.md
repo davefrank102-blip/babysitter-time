@@ -23,7 +23,7 @@ This family uses a **single locked household**. The live site always opens:
 | Morning | Before 12:00 local | **$20/hr** |
 | Afternoon | From 12:00 onward | **$25/hr** |
 
-If a shift crosses noon, hours are **split** across both rates. Overnight shifts are split per calendar day at that day’s cutoff. Timezone is fixed to `America/New_York` for cutoffs and display.
+If a shift crosses noon, hours are **split** across both rates. Pay amounts **round up** to the next whole dollar (no cents). Overnight shifts are split per calendar day at that day’s cutoff. Timezone is fixed to `America/New_York` for cutoffs and display.
 
 Rates, cutoff hour, household name, and parent PIN are editable in **Parent → Settings**.
 

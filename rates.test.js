@@ -104,11 +104,13 @@ console.log('\nends at noon');
 // --- fractional hours crossing noon ---
 console.log('\nfractional cross');
 {
-  // 11:30 → 12:30 = 0.5h morning + 0.5h afternoon = $10 + $12.50 = $22.50
+  // 11:30 → 12:30 = 0.5h morning + 0.5h afternoon = $10 + $12.50 → ceil to $10 + $13 = $23
   const r = splitPay(at(2026, 6, 10, 11, 30), at(2026, 6, 10, 12, 30), opts);
   assertClose(r.morningHours, 0.5, 'morning hours = 0.5');
   assertClose(r.afternoonHours, 0.5, 'afternoon hours = 0.5');
-  assertClose(r.totalPay, 22.5, 'total pay = $22.50');
+  assertClose(r.morningPay, 10, 'morning pay ceil = $10');
+  assertClose(r.afternoonPay, 13, 'afternoon pay ceil = $13');
+  assertClose(r.totalPay, 23, 'total pay ceil = $23');
 }
 
 // --- overnight (optional) ---
