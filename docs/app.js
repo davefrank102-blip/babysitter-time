@@ -48,17 +48,16 @@ function hoursLabel(n) {
   return v.toFixed(2).replace(/\.?0+$/, (m) => (m.includes('.') ? m.replace(/0+$/, '').replace(/\.$/, '') : m));
 }
 
-/** Parse #/h/<uuid> or create a new household id and set the hash. */
+/** Single household for this family — never mint a new id. */
+const CANONICAL_HOUSEHOLD_ID = '5d35fd91-6d35-4def-91fa-fe5545295c85';
+
+/** Always use the canonical household; normalize the URL hash. */
 function resolveHouseholdId() {
-  const hash = location.hash || '';
-  const m = hash.match(/^#\/h\/([0-9a-fA-F-]{36})$/);
-  if (m) return m[1];
-  // Also accept shorter legacy ids
-  const m2 = hash.match(/^#\/h\/([A-Za-z0-9_-]{8,})$/);
-  if (m2) return m2[1];
-  const id = uuid();
-  history.replaceState(null, '', `#/h/${id}`);
-  return id;
+  const target = `#/h/${CANONICAL_HOUSEHOLD_ID}`;
+  if (location.hash !== target) {
+    history.replaceState(null, '', target);
+  }
+  return CANONICAL_HOUSEHOLD_ID;
 }
 
 const FIREBASE_CONFIG = {

@@ -6,14 +6,15 @@ Mobile-first Progressive Web App for babysitter time tracking. Parents and the b
 
 **https://davefrank102-blip.github.io/babysitter-time/**
 
-## First-time setup (stable household)
+## Household link (one only)
 
-1. Open the live site once on a parent phone. The app creates `#/h/<uuid>` in the URL.
-2. Tap **Share link** (Parent view → unlocked) or copy the full URL from the address bar.
-3. Send that link to the sitter (and bookmark it yourself).
-4. Both phones must open the **same** `#/h/<uuid>` URL so they share one Firestore household.
+This family uses a **single locked household**. The live site always opens:
 
-Opening the bare site root without a hash creates a **new** household — only do that once, then share.
+**https://davefrank102-blip.github.io/babysitter-time/#/h/5d35fd91-6d35-4def-91fa-fe5545295c85**
+
+1. Bookmark that URL (or Add to Home Screen from it) on every phone.
+2. Tap **Share link** (Parent view → unlocked) to copy it for the sitter.
+3. Opening the bare site root now **redirects** to this same household — it no longer creates a new one.
 
 ## Rates (America/New_York)
 
