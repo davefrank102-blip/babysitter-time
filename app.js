@@ -39,11 +39,7 @@ function toast(msg) {
 
 function money(n) {
   const v = Number(n) || 0;
-  return v.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  });
+  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 function hoursLabel(n) {
